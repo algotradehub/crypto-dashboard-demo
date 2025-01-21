@@ -168,6 +168,67 @@ def convert_orderbook_tick(orderbook_df: pd.DataFrame, exchange: str, spread=0):
                 'order_amount': order['order_value'],
                 'exchange': 'gateio',
             })
+    elif exchange == 'binance':
+        for order in orders:
+            quotes.append({
+                'price': order['price'] * (1 + spread),
+                'quantity': order['quantity'],
+                'exchange': 'binance',
+            })
         return quotes
     else:
         raise ValueError('Exchange not supported.')
+
+
+def get_binance_pre_market_currencies() -> pd.DataFrame:
+
+    binance_premarket_currencies_url = 'https://api.binance.com/api/v3/exchangeInfo'
+    response = requests.get(binance_premarket_currencies_url)
+
+    if response.status_code != 200:
+        raise Exception('Request Error')
+
+    j = response.json()
+    symbols = [symbol['symbol'] for symbol in j['symbols']]
+    df = pd.DataFrame(symbols, columns=['symbol'])
+
+    return df
+
+
+def get_binance_orderbook(token: str) -> pd.DataFrame:
+
+    headers = {
+        'accept': 'application/json, text/plain, */*',
+        'accept-language': 'en',
+        'dnt': '1',
+        'lang': 'en',
+        'origin': 'https://www.binance.com',
+        'priority': 'u=1, i',
+        'referer': 'https://www.binance.com/',
+        'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-site',
+        'traceparent': '00-f355bb1ea82b8685509918c86a6729db-e548f6630a12a96e-00',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    }
+
+    params = {
+        'symbol': token
+    }
+
+    response = requests.get('https://api.binance.com/api/v3/depth', params=params, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception('Error')
+
+    j = response.json()
+
+    buy_orders = pd.DataFrame(j['bids'], columns=['price', 'quantity'], dtype='float')
+    sell_orders = pd.DataFrame(j['asks'], columns=['price', 'quantity'], dtype='float')
+
+    obs = pd.concat([buy_orders.assign(side='buy'), sell_orders.assign(side='sell')], axis='index', ignore_index=True, sort=True)
+    return obs
+
